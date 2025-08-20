@@ -1,7 +1,7 @@
 // cliente.js
 
 // --- Configurações ---
-const WEBSOCKET_URI = `ws://${window.location.hostname}:8765`;
+const WEBSOCKET_URI = 'wss://gather-server-jggs.onrender.com';
 
 // --- Elementos do HTML ---
 const canvas = document.getElementById('gameCanvas');
