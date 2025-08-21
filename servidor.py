@@ -2,8 +2,23 @@
 import asyncio
 import websockets
 import json
+import os # <-- Nova importação para aceder a variáveis de ambiente
 
 CLIENTS = {}
+
+# --- NOVA FUNÇÃO: Health Check HTTP ---
+# Esta função vai intercetar os pedidos. Se for um pedido HTTP normal,
+# ela responde com "OK". Se não, ela deixa o WebSocket continuar.
+async def health_check_handler(path, request_headers):
+    if "Upgrade" not in request_headers or request_headers["Upgrade"] != "websocket":
+        # Isto é um pedido HTTP normal (o teste de saúde do Render)
+        headers = {
+            "Content-Type": "text/plain",
+            "Access-Control-Allow-Origin": "*" # Permite que o browser aceda
+        }
+        return (200, headers, b"Server is alive and running!")
+    # Se for um pedido WebSocket, não fazemos nada e deixamos a biblioteca continuar
+    return None
 
 async def handler(websocket):
     client_id = str(id(websocket))
@@ -16,8 +31,6 @@ async def handler(websocket):
             action = data.get("action")
             
             if action == 'move':
-                # Reencaminha a mensagem de movimento para todos os outros clientes
-                # Adiciona o ID do remetente para que os outros saibam quem se moveu
                 data['id'] = client_id
                 broadcast_message = json.dumps(data)
                 for cid, ws in CLIENTS.items():
@@ -27,17 +40,19 @@ async def handler(websocket):
     finally:
         print(f"Cliente desconectado: {client_id}")
         del CLIENTS[client_id]
-        # Informa todos que o jogador saiu
         disconnect_message = json.dumps({"action": "disconnect", "id": client_id})
         for ws in CLIENTS.values():
             await ws.send(disconnect_message)
 
 async def main():
     host = "0.0.0.0"
-    port = 8765
-    async with websockets.serve(handler, host, port):
-        # Para saber o seu IP, use o comando 'ipconfig' no terminal
-        print(f"Servidor iniciado em ws://{host}:{port} (acessível na rede local)")
+    # O Render define a porta através de uma variável de ambiente.
+    # Se não estiver no Render, usamos a porta 8765 por padrão.
+    port = int(os.environ.get("PORT", 8765))
+    
+    # Adicionamos o 'process_request' para lidar com o teste de saúde
+    async with websockets.serve(handler, host, port, process_request=health_check_handler):
+        print(f"Servidor iniciado em ws://{host}:{port} (acessível na rede e compatível com health checks)")
         await asyncio.Future()
 
 if __name__ == "__main__":
